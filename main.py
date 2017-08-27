@@ -19,6 +19,7 @@ class MLP(Chain):
         # Concrete Dropout
         xp = cuda.get_array_module(x)
         x = F.broadcast(x)
+        self.input_shape1 = x.shape
         eps = 1e-20
         temp = 0.1
         p1 = F.sigmoid(self.pl1)
@@ -34,12 +35,31 @@ class MLP(Chain):
         y = self.l2(h1)
         return y
 
+    def get_regularizer_loss(self):
+        input_dim = np.prod(self.input_shape1[1:])
+        p1 = F.sigmoid(self.pl1)[0]
+        # TODO: hyper parameter is l**2/N
+        weight_reg = 0.001 * F.sum(F.square(self.l1.W)) / (1. - p1)
+        ber_reg = p1 * F.log(p1) + (1. - p1) * F.log(1. - p1)
+        # TODO: hyper parameter is 2/N
+        drop_reg = 0.001 * input_dim * ber_reg
+        reg = F.sum(weight_reg + drop_reg)
+        return reg
+
+
+class Classifier(L.Classifier):
+
+    def __call__(self, *args):
+        loss = super(Classifier, self).__call__(*args)
+        loss += self.predictor.get_regularizer_loss()
+        return loss
+
 
 gpu = 0
 train, test = datasets.get_mnist()
 train_iter = iterators.SerialIterator(train, batch_size=200, shuffle=True)
 test_iter = iterators.SerialIterator(test, batch_size=100, shuffle=False)
-model = L.Classifier(MLP(100, 10))
+model = Classifier(MLP(100, 10))
 optimizer = optimizers.SGD()
 optimizer.setup(model)
 updater = training.StandardUpdater(train_iter, optimizer, device=gpu)
