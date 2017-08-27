@@ -1,19 +1,35 @@
 # coding: utf-8
-from chainer import datasets, iterators, Chain, optimizers, training, cuda
+from chainer import datasets, iterators, Chain, optimizers, training, cuda, Variable, Parameter
 from chainer.training import extensions
 import chainer.functions as F
 import chainer.links as L
 import numpy as np
+import cupy as cp
 
 
 class MLP(Chain):
     def __init__(self, n_hidden, n_out):
         super(MLP, self).__init__()
         with self.init_scope():
+            self.pl1 = Parameter(0, (1))
             self.l1 = L.Linear(None, n_hidden)
             self.l2 = L.Linear(None, n_out)
 
     def __call__(self, x):
+        # Concrete Dropout
+        xp = cuda.get_array_module(x)
+        x = F.broadcast(x)
+        eps = 1e-20
+        temp = 0.1
+        p1 = F.sigmoid(self.pl1)
+        p1 = F.broadcast_to(p1, x.shape)
+        noise = xp.random.uniform(size=x.shape).astype('float32')
+        drop = F.log(p1 + eps) - F.log(1. - p1 + eps)
+        drop += F.log(noise + eps) - F.log(1. - noise + eps)
+        drop = F.sigmoid(drop / temp)
+        x *= 1. - drop
+        x /= 1. - p1
+
         h1 = F.relu(self.l1(x))
         y = self.l2(h1)
         return y
