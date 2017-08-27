@@ -10,8 +10,9 @@ import numpy as np
 
 class ConcreteDropout(link.Chain):
 
-    def __init__(self, layer):
+    def __init__(self, layer, weight_reg=0.01):
         super(ConcreteDropout, self).__init__()
+        self.weight_reg = weight_reg
         with self.init_scope():
             self.layer = layer
             self.pl = Parameter(0, (1))
@@ -40,12 +41,16 @@ class ConcreteDropout(link.Chain):
     def get_regularizer_loss(self):
         input_dim = np.prod(self.input_shape[1:])
         p = F.sigmoid(self.pl)[0]
-        # TODO: hyper parameter is l**2/N
-        weight_reg = 0.001 * self.get_layer_square_norm() / (1. - p)
+
+        weight_reg = self.weight_reg**2 / self.input_shape[0]
+        weight_reg *= self.get_layer_square_norm() / (1. - p)
+
         ber_reg = p * F.log(p) + (1. - p) * F.log(1. - p)
-        # TODO: hyper parameter is 2/N
-        drop_reg = 0.001 * input_dim * ber_reg
+        drop_reg = 2.0 / self.input_shape[0]
+        drop_reg *= input_dim * ber_reg
+
         reg = F.sum(weight_reg + drop_reg)
+
         return reg
 
 
